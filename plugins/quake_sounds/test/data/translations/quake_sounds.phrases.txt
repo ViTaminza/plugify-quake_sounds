@@ -1,0 +1,69 @@
+"Phrases"
+{
+    // {message} — текст из записи звука, {player} — кто отличился. Цвета: {DEFAULT} {GREEN} {RED} ...
+    "Prefix"
+    {
+        "ru"        "[QuakeSounds]"
+        "en"        "[QuakeSounds]"
+    }
+    "Muted"
+    {
+        "ru"        "{PREFIX} {DEFAULT}Quake-звуки для вас выключены."
+        "en"        "{PREFIX} {DEFAULT}Muted all sounds for yourself."
+    }
+    "Unmuted"
+    {
+        "ru"        "{PREFIX} {DEFAULT}Quake-звуки для вас включены."
+        "en"        "{PREFIX} {DEFAULT}Unmuted all sounds for yourself."
+    }
+    "Menu_Title"
+    {
+        "ru"        "Quake-звуки"
+        "en"        "Quake Sounds"
+    }
+    "Menu_Mute"
+    {
+        "ru"        "Выключить звуки"
+        "en"        "Mute Sounds"
+    }
+    "Menu_Unmute"
+    {
+        "ru"        "Включить звуки"
+        "en"        "Unmute Sounds"
+    }
+    "Settings_Item"
+    {
+        "ru"        "Quake-звуки"
+        "en"        "Quake sounds"
+    }
+    "Center_Msg_Player"
+    {
+        "ru"        "{message}"
+        "en"        "{message}"
+    }
+    "Center_Msg_Other"
+    {
+        "ru"        "{player} -> {message}"
+        "en"        "{player} -> {message}"
+    }
+    "Chat_Msg_Player"
+    {
+        "ru"        "{PREFIX} {DEFAULT}Достижение: {GREEN}{message}"
+        "en"        "{PREFIX} {DEFAULT}Achievement: {GREEN}{message}"
+    }
+    "Chat_Msg_Other"
+    {
+        "ru"        "{PREFIX} {GREEN}{player} {DEFAULT}-> {GREEN}{message}"
+        "en"        "{PREFIX} {GREEN}{player} {DEFAULT}-> {GREEN}{message}"
+    }
+    "Lang_Set"
+    {
+        "ru"        "{PREFIX} {DEFAULT}Язык сообщений: {GREEN}{lang}"
+        "en"        "{PREFIX} {DEFAULT}Message language: {GREEN}{lang}"
+    }
+    "Lang_Usage"
+    {
+        "ru"        "{PREFIX} {DEFAULT}Использование: !lang <код языка>, например !lang ru"
+        "en"        "{PREFIX} {DEFAULT}Usage: !lang <language code>, e.g. !lang en"
+    }
+}
