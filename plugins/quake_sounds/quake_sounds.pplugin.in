@@ -1,0 +1,29 @@
+{
+	"$schema": "https://raw.githubusercontent.com/untrustedmodders/plugify/refs/heads/main/schemas/plugin.schema.json",
+	"version": "${QUAKE_SOUNDS_VERSION}",
+	"name": "quake_sounds",
+	"description": "Quake announcer sounds (kill streaks, first blood, headshots, knife/team/self kills, round events, C4 countdown), ported from the Metamod:Source plugin cs2-quake-sounds (itself a port of Kandru's CounterStrikeSharp CS2 QuakeSounds). Reads configs/quake_sounds/quake_sounds.ini (the live server's fleet config, sound names from workshop addon 3811020435 'Quake 7 Sounds') and configs/quake_sounds/translations/quake_sounds.phrases.txt; per-player mute, message language and volume live in the official permissions cookies under the Metamod cookie names (QuakeSounds.Muted / QuakeSounds.Lang / QuakeSounds.Volume). Per-player volume of the soundevents is applied with GE_SosSetSoundEventParams, exactly like the original. No exported methods.",
+	"author": "Kalle (Kandru), ezekutor, Metamod port; ported to Plugify",
+	"website": "https://github.com/untrustedmodders/plugify",
+	"license": "GPL-3.0",
+	"entry": "bin/quake_sounds",
+	"platforms": [],
+	"language": "cpp",
+	"dependencies": [
+		{
+			"name": "s2sdk",
+			"constraints": ">=2.18.2"
+		},
+		{
+			"name": "permissions",
+			"constraints": ">=1.3.1",
+			"optional": true
+		},
+		{
+			"name": "hudmenu",
+			"constraints": ">=1.0.0",
+			"optional": true
+		}
+	],
+	"methods": []
+}
