@@ -3,8 +3,12 @@
 // The reference is the Metamod port cs2-quake-sounds (itself a port of Kandru's CS2 QuakeSounds).
 // This core keeps the *decisions* of the original (which record matches, who hears it, which
 // message is printed, which volume applies) and leaves every engine call to src/plugin.cpp, so the
-// whole decision layer is testable without a server (test/quake_core_tests.cpp runs it against the
+// whole decision layer is testable without a server (tests/quake_core_tests.cpp runs it against the
 // real quake_sounds.ini).
+//
+// Pure s2sdk (docs/PLUGIN_STANDARD.md §7): nothing here includes pisexcompat or s2sdk. The
+// production KeyValues files are read by the plugin-local KV1 reader (src/kv1.hpp), not by a
+// wrapper library.
 //
 // Naming follows the reference (bEnabled, bIgnoreBots, iDefaultVolume ...) so a diff against the
 // original's quake_sounds.cpp stays readable.
@@ -26,6 +30,12 @@ std::string Trim(const std::string& s);
 std::string Replace(std::string s, const std::string& from, const std::string& to);
 // ";"- or ","-separated list (the config uses both spellings).
 std::vector<std::string> SplitList(const std::string& s);
+
+// Chat colour tags of cs2-menus (the Pisex phrases use them verbatim): {DEFAULT}, {GREEN}, ...
+// and the literal "\n" become the bytes the CS2 chat renderer expects. The native s2sdk
+// PrintToChat sends the text untouched, so the plugin applies this table before printing, exactly
+// like pisex::PrintToChat did.
+std::string Colorize(std::string_view text);
 
 // ---------------------------------------------------------------- entity handles
 
@@ -107,8 +117,17 @@ bool ParsePhrasesText(std::string_view text, const std::string& sServerLang,
 std::string Phrase(const std::map<std::string, std::string>& mapPhrases, const std::string& sServerLang,
 				   const std::string& sKey);
 
-// "ru-RU" -> "ru" (NormalizeLang).
+// "ru-RU" -> "ru" (NormalizeLang of the original's per-player messages).
 std::string NormalizeLang(const std::string& s);
+// Source language name -> the code used by the phrase files ("russian" -> "ru",
+// "portuguese" -> "pt-BR"); the Pisex/core.cfg spelling, case-insensitive. Unknown names are
+// returned unchanged, like pisex::NormalizeLanguage.
+std::string NormalizeLanguage(std::string_view name);
+// <configs>/core.cfg "ServerLang" first, then s2sdk's ServerLanguage, then "en"; both values are
+// the raw strings from the two sources. An unknown name still wins over the fallback, exactly like
+// the Pisex core, which used whatever core.cfg contained.
+std::string PickLanguage(std::string_view coreValue, std::string_view sdkValue);
+
 // Message for one player: his language, then the server language, then the first entry.
 std::string ResolveMessage(const SoundEntry& e, const std::string& sPlayerLang, const std::string& sServerLang);
 

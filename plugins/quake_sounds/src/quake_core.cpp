@@ -1,13 +1,20 @@
 // quake_sounds — engine-free core (see quake_core.hpp).
+//
+// No s2sdk, no pisexcompat: the KeyValues files are parsed by the plugin-local KV1 reader
+// (src/kv1.cpp) and every decision of the original is a pure function of its inputs.
 #include "quake_core.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <strings.h>
+#include <optional>
+#include <utility>
 
-#include <pisex/keyvalues.hpp>
+#include "kv1.hpp"
 
 namespace qs {
 
@@ -53,6 +60,52 @@ std::vector<std::string> SplitList(const std::string& s)
 	return v;
 }
 
+namespace {
+
+// cs2-menus/utils.h: colors_text[] / colors_hex[], same order, same bytes (the copy that lived in
+// pisexcompat). The last entry is the chat line break: "\n" -> U+2029 (e2 80 a9), which the CS2
+// chat renderer shows as a new line.
+struct ColorTag
+{
+	std::string_view tag;
+	std::string_view bytes;
+};
+
+constexpr std::array<ColorTag, 17> kColorTags = {{{"{DEFAULT}", "\x01"},
+												  {"{WHITE}", "\x01"},
+												  {"{RED}", "\x02"},
+												  {"{LIGHTPURPLE}", "\x03"},
+												  {"{GREEN}", "\x04"},
+												  {"{LIME}", "\x05"},
+												  {"{LIGHTGREEN}", "\x06"},
+												  {"{DARKRED}", "\x07"},
+												  {"{GRAY}", "\x08"},
+												  {"{LIGHTOLIVE}", "\x09"},
+												  {"{OLIVE}", "\x10"},
+												  {"{LIGHTBLUE}", "\x0B"},
+												  {"{BLUE}", "\x0C"},
+												  {"{PURPLE}", "\x0E"},
+												  {"{LIGHTRED}", "\x0F"},
+												  {"{GRAYBLUE}", "\x0A"},
+												  {"\\n", "\xe2\x80\xa9"}}};
+
+} // namespace
+
+std::string Colorize(std::string_view text)
+{
+	std::string out(text);
+	for (const ColorTag& color : kColorTags)
+	{
+		std::size_t pos = 0;
+		while ((pos = out.find(color.tag, pos)) != std::string::npos)
+		{
+			out.replace(pos, color.tag.size(), color.bytes);
+			pos += color.bytes.size();
+		}
+	}
+	return out;
+}
+
 // ---------------------------------------------------------------- config
 
 Scope ParseScope(const std::string& s)
@@ -69,22 +122,21 @@ Scope ParseScope(const std::string& s)
 
 bool ParseConfigText(std::string_view text, Config& cfg, std::map<std::string, SoundEntry>& mapEntries)
 {
-	Config def;
-	cfg = def;
+	cfg = Config{};
 	mapEntries.clear();
 
-	pisex::KeyValues kv("QuakeSounds");
-	if (!kv.LoadFromBuffer(text)) return false;
+	const std::optional<KvNode> root = ParseKv1(text);
+	if (!root) return false;
 
-	cfg.bEnabled = kv.GetInt("enabled", 1) != 0;
-	cfg.bDebug = kv.GetInt("debug", 0) != 0;
+	cfg.bEnabled = root->GetInt("enabled", 1) != 0;
+	cfg.bDebug = root->GetInt("debug", 0) != 0;
 
-	if (pisex::KeyValues* p = kv.FindKey("global"))
+	if (const KvNode* p = root->Find("global"))
 	{
 		cfg.bWarmup = p->GetInt("enabled_during_warmup", 1) != 0;
-		cfg.sPlayOn = Lower(p->GetString("play_on_entity", "player"));
+		cfg.sPlayOn = Lower(std::string(p->GetString("play_on_entity", "player")));
 		cfg.iDefaultVolume = std::clamp((int)lroundf(p->GetFloat("default_volume", 1.0f) * 100.0f), 0, 100);
-		cfg.eScope = ParseScope(p->GetString("sound_hearable_by", "all"));
+		cfg.eScope = ParseScope(std::string(p->GetString("sound_hearable_by", "all")));
 		cfg.bIgnoreBots = p->GetInt("ignore_bots", 0) != 0;
 		cfg.bIgnoreWorld = p->GetInt("ignore_world_damage", 1) != 0;
 		cfg.bCountSelf = p->GetInt("count_self_kills", 0) != 0;
@@ -93,31 +145,31 @@ bool ParseConfigText(std::string_view text, Config& cfg, std::map<std::string, S
 		cfg.bResetOnRoundStart = p->GetInt("reset_kills_on_round_start", 1) != 0;
 		cfg.bHeadshotOnce = p->GetInt("headshot_once", 0) != 0;
 	}
-	if (pisex::KeyValues* p = kv.FindKey("precache"))
+	if (const KvNode* p = root->Find("precache"))
 	{
-		std::string sFile = p->GetString("soundevent_file", "");
+		const std::string sFile(p->GetString("soundevent_file", ""));
 		if (!sFile.empty()) cfg.vPrecache.push_back(sFile);
-		if (pisex::KeyValues* pAdd = p->FindKey("additional_files"))
-			for (pisex::KeyValues* pKey = pAdd->GetFirstValue(); pKey; pKey = pKey->GetNextValue())
+		if (const KvNode* pAdd = p->Find("additional_files"))
+			for (const KvNode& key : pAdd->children)
 			{
-				const char* sz = pKey->GetString(nullptr, "");
-				if (sz && sz[0]) cfg.vPrecache.push_back(sz);
+				// GetFirstValue()/GetNextValue() of the original: values only, in file order.
+				if (key.hasValue && !key.value.empty()) cfg.vPrecache.push_back(key.value);
 			}
 	}
-	if (pisex::KeyValues* p = kv.FindKey("commands"))
+	if (const KvNode* p = root->Find("commands"))
 	{
-		cfg.vCommands = SplitList(p->GetString("settings", "!qs"));
-		cfg.vLangCommands = SplitList(p->GetString("language", "!lang"));
+		cfg.vCommands = SplitList(std::string(p->GetString("settings", "!qs")));
+		cfg.vLangCommands = SplitList(std::string(p->GetString("language", "!lang")));
 		cfg.bSettingsMenu = p->GetInt("settings_menu", 0) != 0;
 		cfg.bUtilsSettings = p->GetInt("utils_settings_menu", 1) != 0;
 	}
-	if (pisex::KeyValues* p = kv.FindKey("messages"))
+	if (const KvNode* p = root->Find("messages"))
 	{
 		cfg.bCenter = p->GetInt("enable_center_message", 1) != 0;
-		cfg.sCenterType = Lower(p->GetString("center_message_type", "default"));
+		cfg.sCenterType = Lower(std::string(p->GetString("center_message_type", "default")));
 		cfg.bChat = p->GetInt("enable_chat_message", 1) != 0;
 	}
-	if (pisex::KeyValues* p = kv.FindKey("sound_priorities"))
+	if (const KvNode* p = root->Find("sound_priorities"))
 	{
 		std::vector<std::pair<int, Kind>> v = {
 			{p->GetInt("special_events", 1), Kind::Special},
@@ -128,16 +180,18 @@ bool ParseConfigText(std::string_view text, Config& cfg, std::map<std::string, S
 		cfg.vPriority.clear();
 		for (auto& x : v) cfg.vPriority.push_back(x.second);
 	}
-	if (pisex::KeyValues* pSounds = kv.FindKey("sounds"))
+	if (const KvNode* pSounds = root->Find("sounds"))
 	{
-		for (pisex::KeyValues* pEntry = pSounds->GetFirstTrueSubKey(); pEntry; pEntry = pEntry->GetNextTrueSubKey())
+		for (const KvNode& pEntry : pSounds->children)
 		{
+			if (!pEntry.isBlock) continue; // GetFirstTrueSubKey() iterated blocks only
 			SoundEntry e;
-			e.sKey = Lower(pEntry->GetName());
-			for (pisex::KeyValues* pVal = pEntry->GetFirstValue(); pVal; pVal = pVal->GetNextValue())
+			e.sKey = Lower(pEntry.name);
+			for (const KvNode& pVal : pEntry.children)
 			{
-				std::string sName = Lower(pVal->GetName());
-				std::string sValue = pVal->GetString(nullptr, "");
+				if (!pVal.hasValue) continue; // GetFirstValue() iterated values only
+				const std::string sName = Lower(pVal.name);
+				const std::string sValue = pVal.value;
 				if (sName == "_sound") e.vSounds = SplitList(sValue);
 				else if (sName == "_filter") { e.bHasScope = true; e.eScope = ParseScope(sValue); }
 				else if (sName == "_volume") e.flVolume = (float)atof(sValue.c_str());
@@ -180,13 +234,14 @@ bool ParsePhrasesText(std::string_view text, const std::string& sServerLang,
 					  std::map<std::string, std::string>& mapPhrases)
 {
 	mapPhrases.clear();
-	pisex::KeyValues kv("Phrases");
-	if (!kv.LoadFromBuffer(text)) return false;
-	for (pisex::KeyValues* pKey = kv.GetFirstTrueSubKey(); pKey; pKey = pKey->GetNextTrueSubKey())
+	const std::optional<KvNode> root = ParseKv1(text);
+	if (!root) return false;
+	for (const KvNode& pKey : root->children)
 	{
-		const char* sz = pKey->GetString(sServerLang.c_str(), "");
-		if (!sz[0]) sz = pKey->GetString("en", "");
-		if (sz[0]) mapPhrases[pKey->GetName()] = sz;
+		if (!pKey.isBlock) continue;
+		std::string_view sz = pKey.GetString(sServerLang);
+		if (sz.empty()) sz = pKey.GetString("en");
+		if (!sz.empty()) mapPhrases[pKey.name] = std::string(sz);
 	}
 	return true;
 }
@@ -213,6 +268,42 @@ std::string NormalizeLang(const std::string& s)
 	size_t iDash = v.find('-');
 	if (iDash != std::string::npos) v = v.substr(0, iDash);
 	return v;
+}
+
+std::string NormalizeLanguage(std::string_view name)
+{
+	const std::string trimmed(Trim(std::string(name)));
+	std::string lower;
+	lower.reserve(trimmed.size());
+	for (const char c : trimmed)
+		lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+	// Source language names -> the codes used by the Pisex phrase files.
+	if (lower == "russian" || lower == "ru") return "ru";
+	if (lower == "english" || lower == "en") return "en";
+	if (lower == "ukrainian" || lower == "ua" || lower == "uk") return "ua";
+	if (lower == "portuguese" || lower == "pt-br" || lower == "brazilian") return "pt-BR";
+	if (lower == "spanish" || lower == "es") return "es";
+	if (lower == "german" || lower == "de") return "de";
+	if (lower == "french" || lower == "fr") return "fr";
+	if (lower == "polish" || lower == "pl") return "pl";
+	if (lower == "turkish" || lower == "tr") return "tr";
+	if (lower == "schinese" || lower == "zh-cn") return "zh-CN";
+	return trimmed;
+}
+
+std::string PickLanguage(std::string_view coreValue, std::string_view sdkValue)
+{
+	if (!coreValue.empty())
+	{
+		const std::string core = NormalizeLanguage(coreValue);
+		if (!core.empty()) return core;
+	}
+	if (!sdkValue.empty())
+	{
+		const std::string sdk = NormalizeLanguage(sdkValue);
+		if (!sdk.empty()) return sdk;
+	}
+	return "en";
 }
 
 std::string ResolveMessage(const SoundEntry& e, const std::string& sPlayerLang, const std::string& sServerLang)
